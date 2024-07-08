@@ -1,95 +1,134 @@
 import streamlit as st
-import pandas as pd
 from datetime import datetime, timedelta
 import json
 import os
 
-# Nombre del archivo de datos
-DATA_FILE = 'reservas_data.json'
+# Nombre de los archivos de datos
+PACIENTES_FILE = 'pacientes_data.json'
+CITAS_FILE = 'citas_data.json'
 
-# Función para cargar las reservas desde un archivo
-def cargar_reservas():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, 'r') as file:
+# Función para cargar los datos desde un archivo
+def cargar_datos(filename):
+    if os.path.exists(filename):
+        with open(filename, 'r') as file:
             return json.load(file)
     return {}
 
-# Función para guardar las reservas en un archivo
-def guardar_reservas(reservas):
-    with open(DATA_FILE, 'w') as file:
-        json.dump(reservas, file)
+# Función para guardar los datos en un archivo
+def guardar_datos(filename, datos):
+    with open(filename, 'w') as file:
+        json.dump(datos, file)
 
-# Estructura de datos para las reservas
-reservas = cargar_reservas()
+# Cargar los datos de pacientes y citas
+pacientes = cargar_datos(PACIENTES_FILE)
+citas = cargar_datos(CITAS_FILE)
 
-# Función para agregar una reserva
-def agregar_reserva(nombre, fecha, hora):
-    formato = "%Y-%m-%d %H:%M"
-    try:
-        inicio_reserva = datetime.strptime(f"{fecha} {hora}", formato)
-    except ValueError:
-        return "Error: Formato de fecha u hora incorrecto. Use YYYY-MM-DD HH:MM."
-    
-    # Validar que la hora esté dentro del rango permitido
-    if inicio_reserva.time() < datetime.strptime('08:00', '%H:%M').time() or inicio_reserva.time() >= datetime.strptime('16:00', '%H:%M').time():
-        return "Error: La hora debe estar entre las 08:00 AM y las 03:00 PM para asegurar una duración de una hora."
-    
-    fin_reserva = inicio_reserva + timedelta(hours=1)
-    
-    # Verificar conflictos con otras reservas
-    for reserva in reservas.values():
-        inicio_existente = datetime.strptime(reserva['inicio'], formato)
-        fin_existente = datetime.strptime(reserva['fin'], formato)
-        if inicio_existente < fin_reserva and inicio_reserva < fin_existente:
-            return f"Error: Ya hay una reserva para ese horario ({fecha} {hora})"
-    
-    reservas[nombre] = {'inicio': inicio_reserva.strftime(formato), 'fin': fin_reserva.strftime(formato)}
-    guardar_reservas(reservas)
-    return f"Reserva realizada para {nombre} el {fecha} a las {hora}."
+def agregar_paciente():
+    st.title("Agregar Paciente")
+    nombre = st.text_input("Nombre del Paciente")
+    if st.button("Agregar Paciente"):
+        if nombre in pacientes:
+            st.error("El paciente ya existe")
+        else:
+            pacientes[nombre] = {"nombre": nombre}
+            guardar_datos(PACIENTES_FILE, pacientes)
+            st.success(f"Paciente {nombre} agregado exitosamente")
 
-# Función para mostrar las reservas
-def mostrar_reservas():
-    if not reservas:
-        st.write("No hay reservas.")
-    for nombre, tiempo in reservas.items():
-        st.write(f"{nombre}: {tiempo['inicio']} - {tiempo['fin']}")
+def borrar_paciente():
+    st.title("Borrar Paciente")
+    nombre = st.text_input("Nombre del Paciente")
+    if st.button("Borrar Paciente"):
+        if nombre in pacientes:
+            del pacientes[nombre]
+            guardar_datos(PACIENTES_FILE, pacientes)
+            st.success(f"Paciente {nombre} borrado exitosamente")
+        else:
+            st.error("El paciente no existe")
 
-# Función para borrar una reserva
-def borrar_reserva(nombre):
-    if nombre in reservas:
-        del reservas[nombre]
-        guardar_reservas(reservas)
-        return f"Reserva de {nombre} eliminada."
-    return f"No se encontró una reserva a nombre de {nombre}."
+def consultar_pacientes():
+    st.title("Consultar Pacientes")
+    if not pacientes:
+        st.write("No hay pacientes registrados.")
+    for nombre in pacientes:
+        st.write(f"Nombre: {nombre}")
 
-# Interfaz de Streamlit
-st.set_page_config(layout="wide")
+def registrar_cita():
+    st.title("Registrar Cita")
+    if not pacientes:
+        st.warning("No hay pacientes registrados. Registra un paciente primero.")
+        return
+    paciente_nombre = st.selectbox("Selecciona el Paciente", list(pacientes.keys()))
+    fecha = st.date_input("Selecciona la Fecha")
+    hora_inicio = st.selectbox("Selecciona la Hora de Inicio", [f"{h}:00" for h in range(8, 16)])
+    hora_inicio_dt = datetime.strptime(f"{fecha} {hora_inicio}", "%Y-%m-%d %H:%M")
+    hora_fin_dt = hora_inicio_dt + timedelta(hours=1)
+    hora_inicio_str = hora_inicio_dt.strftime("%H:%M")
+    hora_fin_str = hora_fin_dt.strftime("%H:%M")
 
-st.title('Sistema de Reservas')
+    if st.button("Registrar Cita"):
+        cita_id = f"{paciente_nombre}-{fecha}-{hora_inicio_str}"
+        if cita_id in citas:
+            st.error("El paciente ya tiene una cita en ese horario")
+        else:
+            citas[cita_id] = {
+                "paciente": paciente_nombre,
+                "fecha": fecha.strftime("%Y-%m-%d"),
+                "hora_inicio": hora_inicio_str,
+                "hora_fin": hora_fin_str
+            }
+            guardar_datos(CITAS_FILE, citas)
+            st.success(f"Cita registrada para {paciente_nombre} el {fecha} de {hora_inicio_str} a {hora_fin_str}")
 
-opcion = st.selectbox('Selecciona una opción', ['Agregar Reserva', 'Mostrar Reservas', 'Borrar Reserva'])
+def borrar_cita():
+    st.title("Borrar Cita")
+    if not pacientes:
+        st.warning("No hay pacientes registrados. Registra un paciente primero.")
+        return
+    paciente_nombre = st.selectbox("Selecciona el Paciente", list(pacientes.keys()))
+    fecha = st.date_input("Selecciona la Fecha")
+    hora_inicio = st.selectbox("Selecciona la Hora de Inicio", [f"{h}:00" for h in range(8, 16)])
+    hora_inicio_str = datetime.strptime(f"{fecha} {hora_inicio}", "%Y-%m-%d %H:%M").strftime("%H:%M")
 
-if opcion == 'Agregar Reserva':
-    nombre = st.text_input('Nombre')
-    fecha = st.date_input('Fecha')
-    hora = st.time_input('Hora', value=datetime.strptime('08:00', '%H:%M').time())
+    if st.button("Borrar Cita"):
+        cita_id = f"{paciente_nombre}-{fecha}-{hora_inicio_str}"
+        if cita_id in citas:
+            del citas[cita_id]
+            guardar_datos(CITAS_FILE, citas)
+            st.success(f"Cita para {paciente_nombre} el {fecha} a las {hora_inicio_str} borrada exitosamente")
+        else:
+            st.error("No se encontró una cita para ese paciente en ese horario")
 
-    if hora < datetime.strptime('08:00', '%H:%M').time() or hora >= datetime.strptime('16:00', '%H:%M').time():
-        st.warning("Por favor seleccione una hora entre las 08:00 AM y las 03:00 PM para asegurar una duración de una hora.")
-    else:
-        if st.button('Agregar'):
-            fecha_str = fecha.strftime('%Y-%m-%d')
-            hora_str = hora.strftime('%H:%M')
-            resultado = agregar_reserva(nombre, fecha_str, hora_str)
-            st.write(resultado)
+def consultar_citas():
+    st.title("Consultar Citas")
+    if not citas:
+        st.write("No hay citas registradas.")
+    for cita_id, datos in citas.items():
+        st.write(f"Paciente: {datos['paciente']}, Fecha: {datos['fecha']}, Hora: {datos['hora_inicio']} - {datos['hora_fin']}")
 
-elif opcion == 'Mostrar Reservas':
-    mostrar_reservas()
+st.sidebar.title("Menú Principal")
 
-elif opcion == 'Borrar Reserva':
-    nombre = st.text_input('Nombre de la reserva a borrar')
-    if st.button('Borrar'):
-        resultado = borrar_reserva(nombre)
-        st.write(resultado)
-        mostrar_reservas()
+menu_principal = st.sidebar.radio("Selecciona una opción", ["Ninguna", "Pacientes", "Citas"], index=0)
 
+if menu_principal == "Pacientes":
+    password = st.sidebar.text_input("Introduce la contraseña", type="password")
+    if password:
+        if password == "Tt3plco4$":
+            st.sidebar.title("Opciones de Pacientes")
+            opcion = st.sidebar.radio("Selecciona una opción", ["Agregar Paciente", "Borrar Paciente", "Consultar Pacientes"], index=0)
+            if opcion == "Agregar Paciente":
+                agregar_paciente()
+            elif opcion == "Borrar Paciente":
+                borrar_paciente()
+            elif opcion == "Consultar Pacientes":
+                consultar_pacientes()
+        else:
+            st.sidebar.error("Contraseña incorrecta")
+elif menu_principal == "Citas":
+    st.sidebar.title("Opciones de Citas")
+    opcion = st.sidebar.radio("Selecciona una opción", ["Registrar Cita", "Borrar Cita", "Consultar Citas"], index=0)
+    if opcion == "Registrar Cita":
+        registrar_cita()
+    elif opcion == "Borrar Cita":
+        borrar_cita()
+    elif opcion == "Consultar Citas":
+        consultar_citas()
